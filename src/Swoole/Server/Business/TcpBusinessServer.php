@@ -6,17 +6,15 @@ namespace Imi\WorkermanGateway\Swoole\Server\Business;
 
 use GatewayWorker\Lib\Context;
 use GatewayWorker\Lib\Gateway;
-use Imi\App;
 use Imi\Bean\Annotation\Bean;
 use Imi\Event\Event;
-use Imi\Log\ErrorLog;
+use Imi\Log\Log;
 use Imi\Server\Server;
 use Imi\Swoole\SwooleWorker;
 use Imi\Swoole\Util\Coroutine;
 use Imi\Util\Socket\IPEndPoint;
 use Imi\Worker;
-use Imi\WorkermanGateway\Swoole\Server\Business\Task\WorkerTask;
-use Throwable;
+use Imi\WorkermanGateway\Swoole\Server\Business\Task\TcpWorkerTask;
 use Workerman\Gateway\Config\GatewayWorkerConfig;
 use Workerman\Gateway\Gateway\Contract\IGatewayClient;
 use Workerman\Gateway\Gateway\GatewayWorkerClient;
@@ -40,10 +38,10 @@ if (\Imi\Util\Imi::checkAppType('swoole'))
         protected function getServerInitConfig(): array
         {
             return [
-                'host'      => $this->config['host'] ?? '127.0.0.1',
-                'port'      => $this->config['port'] ?? 0,
-                'sockType'  => $this->config['sockType'] ?? \SWOOLE_SOCK_TCP,
-                'mode'      => $this->config['mode'] ?? \SWOOLE_BASE,
+                'host'      => $host = $this->config['host'] ?? '0.0.0.0',
+                'port'      => (int) ($this->config['port'] ?? 0),
+                'sockType'  => (int) ($this->config['sockType'] ?? \Imi\Swoole\Util\Swoole::getTcpSockTypeByHost($host)),
+                'mode'      => (int) ($this->config['mode'] ?? \SWOOLE_BASE),
             ];
         }
 
@@ -53,7 +51,7 @@ if (\Imi\Util\Imi::checkAppType('swoole'))
         public function __construct(string $name, array $config)
         {
             parent::__construct($name, $config);
-            Event::on('IMI.MAIN_SERVER.WORKER.START', function () {
+            Event::one('IMI.MAIN_SERVER.WORKER.START', function () {
                 if (!SwooleWorker::isTask())
                 {
                     $this->initGatewayWorker();
@@ -75,7 +73,7 @@ if (\Imi\Util\Imi::checkAppType('swoole'))
             }
 
             Coroutine::create(function () use ($workermanGatewayConfig) {
-                $this->pool = $pool = new CoPool($workermanGatewayConfig['worker_coroutine_num'] ?? swoole_cpu_num(), $workermanGatewayConfig['channel']['size'] ?? 1024, WorkerTask::class);
+                $this->pool = $pool = new CoPool($workermanGatewayConfig['worker_coroutine_num'] ?? swoole_cpu_num(), $workermanGatewayConfig['channel']['size'] ?? 1024, TcpWorkerTask::class);
                 $pool->run();
                 $pool->wait();
             });
@@ -86,10 +84,8 @@ if (\Imi\Util\Imi::checkAppType('swoole'))
                 // Gateway Worker
                 $client = new GatewayWorkerClient(($workermanGatewayConfig['workerName'] ?? $this->getName()) . ':' . Worker::getWorkerId(), $config);
                 // 异常处理
-                $client->onException = static function (Throwable $th) {
-                    /** @var ErrorLog $errorLog */
-                    $errorLog = App::getBean('ErrorLog');
-                    $errorLog->onException($th);
+                $client->onException = static function (\Throwable $th) {
+                    Log::error($th);
                 };
                 // 网关消息
                 $client->onGatewayMessage = function (IGatewayClient $client, array $message) {

@@ -9,6 +9,7 @@ use GatewayWorker\Lib\Gateway;
 use Imi\Bean\Annotation\Bean;
 use Imi\ConnectionContext;
 use Imi\Event\Event;
+use Imi\Log\Log;
 use Imi\RequestContext;
 use Imi\Server\DataParser\JsonObjectParser;
 use Imi\Server\Protocol;
@@ -16,7 +17,6 @@ use Imi\Server\Server;
 use Imi\Server\WebSocket\Message\Frame;
 use Imi\Util\Socket\IPEndPoint;
 use Imi\WorkermanGateway\Workerman\Http\Message\WorkermanRequest;
-use ReflectionClass;
 
 /**
  * @Bean("WorkermanGatewayWebSocketBusinessServer")
@@ -50,7 +50,7 @@ class WebSocketBusinessServer extends \Imi\Workerman\Server\WebSocket\Server
     public function __construct(string $name, array $config)
     {
         parent::__construct($name, $config);
-        Event::on('IMI.WORKERMAN.SERVER.WORKER_START', function () {
+        Event::one('IMI.WORKERMAN.SERVER.WORKER_START', function () {
             $this->bindBusinessEvents();
         });
     }
@@ -66,7 +66,7 @@ class WebSocketBusinessServer extends \Imi\Workerman\Server\WebSocket\Server
     protected function bindBusinessEvents(): void
     {
         $worker = $this->worker;
-        $refClass = new ReflectionClass($worker);
+        $refClass = new \ReflectionClass($worker);
 
         $property = $refClass->getProperty('_eventOnConnect');
         $property->setAccessible(true);
@@ -132,18 +132,29 @@ class WebSocketBusinessServer extends \Imi\Workerman\Server\WebSocket\Server
         $property = $refClass->getProperty('_eventOnMessage');
         $property->setAccessible(true);
         $property->setValue($worker, function (string $clientId, $data) {
-            RequestContext::muiltiSet([
-                'server'   => $this,
-                'clientId' => $clientId,
-            ]);
+            try
+            {
+                RequestContext::muiltiSet([
+                    'server'   => $this,
+                    'clientId' => $clientId,
+                ]);
 
-            Event::trigger('IMI.WORKERMAN.SERVER.WEBSOCKET.MESSAGE', [
-                'server'   => $this,
-                'clientId' => $clientId,
-                'data'     => $data,
-                'frame'    => new Frame($data, $clientId),
-            ], $this);
-            RequestContext::destroy();
+                Event::trigger('IMI.WORKERMAN.SERVER.WEBSOCKET.MESSAGE', [
+                    'server'   => $this,
+                    'clientId' => $clientId,
+                    'data'     => $data,
+                    'frame'    => new Frame($data, $clientId),
+                ], $this);
+                RequestContext::destroy();
+            }
+            catch (\Throwable $th)
+            {
+                // @phpstan-ignore-next-line
+                if (true !== $this->getBean('WebSocketErrorHandler')->handle($th))
+                {
+                    Log::error($th);
+                }
+            }
         });
     }
 

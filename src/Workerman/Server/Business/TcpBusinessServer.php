@@ -9,11 +9,11 @@ use GatewayWorker\Lib\Gateway;
 use Imi\Bean\Annotation\Bean;
 use Imi\ConnectionContext;
 use Imi\Event\Event;
+use Imi\Log\Log;
 use Imi\RequestContext;
 use Imi\Server\Protocol;
 use Imi\Server\Server;
 use Imi\Util\Socket\IPEndPoint;
-use ReflectionClass;
 
 /**
  * @Bean("WorkermanGatewayTcpBusinessServer")
@@ -31,7 +31,7 @@ class TcpBusinessServer extends \Imi\Workerman\Server\Tcp\Server
     public function __construct(string $name, array $config)
     {
         parent::__construct($name, $config);
-        Event::on('IMI.WORKERMAN.SERVER.WORKER_START', function () {
+        Event::one('IMI.WORKERMAN.SERVER.WORKER_START', function () {
             $this->bindBusinessEvents();
         });
     }
@@ -61,7 +61,7 @@ class TcpBusinessServer extends \Imi\Workerman\Server\Tcp\Server
     protected function bindBusinessEvents(): void
     {
         $worker = $this->worker;
-        $refClass = new ReflectionClass($worker);
+        $refClass = new \ReflectionClass($worker);
 
         $property = $refClass->getProperty('_eventOnConnect');
         $property->setAccessible(true);
@@ -98,17 +98,28 @@ class TcpBusinessServer extends \Imi\Workerman\Server\Tcp\Server
         $property = $refClass->getProperty('_eventOnMessage');
         $property->setAccessible(true);
         $property->setValue($worker, function (string $clientId, $data) {
-            RequestContext::muiltiSet([
-                'server'   => $this,
-                'clientId' => $clientId,
-            ]);
+            try
+            {
+                RequestContext::muiltiSet([
+                    'server'   => $this,
+                    'clientId' => $clientId,
+                ]);
 
-            Event::trigger('IMI.WORKERMAN.SERVER.TCP.MESSAGE', [
-                'server'   => $this,
-                'clientId' => $clientId,
-                'data'     => $data,
-            ], $this);
-            RequestContext::destroy();
+                Event::trigger('IMI.WORKERMAN.SERVER.TCP.MESSAGE', [
+                    'server'   => $this,
+                    'clientId' => $clientId,
+                    'data'     => $data,
+                ], $this);
+                RequestContext::destroy();
+            }
+            catch (\Throwable $th)
+            {
+                // @phpstan-ignore-next-line
+                if (true !== $this->getBean('TcpErrorHandler')->handle($th))
+                {
+                    Log::error($th);
+                }
+            }
         });
     }
 

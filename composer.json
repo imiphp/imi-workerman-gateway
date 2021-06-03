@@ -1,10 +1,9 @@
 {
     "name": "imiphp/imi-workerman-gateway",
     "type": "library",
-    "license": "MulanPSL-1.0",
+    "license": "MulanPSL-2.0",
     "description": "imi workerman gateway component",
     "require": {
-        "php": ">=7.4 <8.2",
         "workerman/gateway-worker": "^3.0",
         "yurunsoft/workerman-gateway-sdk": "^1.0"
     },
@@ -33,5 +32,7 @@
         "pre-update-cmd": "Imi\\WorkermanGateway\\Dev\\Dev::preUpdate",
         "post-install-cmd": "Imi\\WorkermanGateway\\Dev\\Dev::postUpdate",
         "post-update-cmd": "Imi\\WorkermanGateway\\Dev\\Dev::postUpdate"
-    }
+    },
+    "minimum-stability": "dev",
+    "prefer-stable": true
 }

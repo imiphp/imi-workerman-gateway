@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Imi\Cli\ImiCommand;
+
 use function Imi\env;
 use function Imi\ttyExec;
 
@@ -20,8 +21,42 @@ function startServer(): void
         for ($i = 0; $i < 60; ++$i)
         {
             sleep(1);
-            $context = stream_context_create(['http' => ['timeout' => 1]]);
+            $context = stream_context_create(['http' => ['timeout' => 20]]);
             if ('imi' === @file_get_contents(env('HTTP_SERVER_HOST', 'http://127.0.0.1:13000/'), false, $context))
+            {
+                $serverStarted = true;
+                break;
+            }
+        }
+
+        return $serverStarted;
+    }
+
+    // @phpstan-ignore-next-line
+    function checkPort13004(): bool
+    {
+        $serverStarted = false;
+        for ($i = 0; $i < 60; ++$i)
+        {
+            sleep(1);
+            if (checkPort('127.0.0.1', 13004))
+            {
+                $serverStarted = true;
+                break;
+            }
+        }
+
+        return $serverStarted;
+    }
+
+    // @phpstan-ignore-next-line
+    function checkPort13002(): bool
+    {
+        $serverStarted = false;
+        for ($i = 0; $i < 60; ++$i)
+        {
+            sleep(1);
+            if (checkPort('127.0.0.1', 13002))
             {
                 $serverStarted = true;
                 break;
@@ -37,24 +72,30 @@ function startServer(): void
             'WorkermanServer'    => [
                 'start'         => __DIR__ . '/unit/AppServer/bin/start-workerman.ps1',
                 'stop'          => __DIR__ . '/unit/AppServer/bin/stop-workerman.ps1',
-                'checkStatus'   => 'checkHttpServerStatus',
+                'checkStatus'   => [
+                    'checkHttpServerStatus',
+                    'checkPort13004',
+                    'checkPort13002',
+                ],
             ],
         ];
     }
     else
     {
         $servers = [
-            'WorkermanServer'    => [
+            'WorkermanServer'            => [
                 'start'         => __DIR__ . '/unit/AppServer/bin/start-workerman.sh',
                 'checkStatus'   => 'checkHttpServerStatus',
             ],
             'WorkermanRegisterServer'    => [
                 'start'         => __DIR__ . '/unit/AppServer/bin/start-workerman.sh --name register',
+                'checkStatus'   => 'checkPort13004',
             ],
-            'WorkermanGatewayServer'    => [
+            'WorkermanGatewayServer'     => [
                 'start'         => __DIR__ . '/unit/AppServer/bin/start-workerman.sh --name gateway',
+                'checkStatus'   => 'checkPort13002',
             ],
-            'SwooleServer' => [
+            'SwooleServer'               => [
                 'start'         => __DIR__ . '/unit/AppServer/bin/start-swoole.sh',
                 'stop'          => __DIR__ . '/unit/AppServer/bin/stop-swoole.sh',
                 'checkStatus'   => 'checkHttpServerStatus',
@@ -79,7 +120,7 @@ function startServer(): void
 
     if ('/' === \DIRECTORY_SEPARATOR)
     {
-        register_shutdown_function(function () {
+        register_shutdown_function(static function () {
             echo 'Stoping WorkermanServers...', \PHP_EOL;
             if ('Darwin' === \PHP_OS)
             {
@@ -87,7 +128,7 @@ function startServer(): void
             }
             else
             {
-                $keyword = 'WorkerMan: master process';
+                $keyword = 'imi:master';
             }
             ttyExec(<<<CMD
             kill `ps -ef|grep "{$keyword}"|grep -v grep|awk '{print $2}'`
@@ -113,7 +154,7 @@ function runTestServer(string $name, array $options): void
 
     if (isset($options['stop']))
     {
-        register_shutdown_function(function () use ($name, $options) {
+        register_shutdown_function(static function () use ($name, $options) {
             // stop server
             $cmd = $options['stop'];
             if ('\\' === \DIRECTORY_SEPARATOR)
@@ -128,50 +169,32 @@ function runTestServer(string $name, array $options): void
 
     if (isset($options['checkStatus']))
     {
-        if (($options['checkStatus'])())
+        if (\is_array($options['checkStatus']))
         {
-            echo "{$name} started!", \PHP_EOL;
+            $checkStatuses = $options['checkStatus'];
         }
         else
         {
-            throw new \RuntimeException("{$name} start failed");
+            $checkStatuses = [$options['checkStatus']];
+        }
+        foreach ($checkStatuses as $checkStatus)
+        {
+            if ($checkStatus())
+            {
+                echo "{$name} started!", \PHP_EOL;
+
+                return;
+            }
+            else
+            {
+                throw new \RuntimeException("{$name} start failed");
+            }
         }
     }
-}
-
-/**
- * 检查端口是否可以被绑定.
- */
-function checkPort(string $host, int $port, ?int &$errno = null, ?string &$errstr = null): bool
-{
-    $socket = @stream_socket_client('tcp://' . $host . ':' . $port, $errno, $errstr, 3);
-    if (!$socket)
-    {
-        return false;
-    }
-    fclose($socket);
-
-    return true;
 }
 
 startServer();
 
-register_shutdown_function(function () {
-    echo 'check ports...', \PHP_EOL;
-    foreach ([13000, 13002, 13004, 12900] as $port)
-    {
-        echo "checking port {$port}...";
-        $count = 0;
-        while (checkPort('127.0.0.1', $port))
-        {
-            if ($count >= 10)
-            {
-                echo 'failed', \PHP_EOL;
-                continue 2;
-            }
-            ++$count;
-            sleep(1);
-        }
-        echo 'OK', \PHP_EOL;
-    }
+register_shutdown_function(static function () {
+    checkPorts([13000, 13002, 13004, 12900]);
 });

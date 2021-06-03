@@ -2,30 +2,33 @@
 
 declare(strict_types=1);
 
+use Imi\Server\WebSocket\Enum\NonControlFrameType;
+
 use function Imi\env;
 
 return [
     // 项目根命名空间
-    'namespace'    => 'Imi\WorkermanGateway\Test\AppServer',
+    'namespace'         => 'Imi\WorkermanGateway\Test\AppServer',
 
     // 配置文件
-    'configs'    => [
+    'configs'           => [
         'beans'        => __DIR__ . '/beans.php',
     ],
 
     // 扫描目录
-    'beanScan'    => [
+    'beanScan'          => [
     ],
 
     // 组件命名空间
-    'components'    => [
+    'components'        => [
         'Workerman'        => 'Imi\Workerman',
         'Swoole'           => \defined('SWOOLE_VERSION') ? 'Imi\Swoole' : '',
         'WorkermanGateway' => 'Imi\WorkermanGateway',
+        'Macro'            => 'Imi\Macro',
     ],
 
     // 日志配置
-    'logger' => [
+    'logger'            => [
         'channels' => [
             'imi' => [
                 'handlers' => [
@@ -61,14 +64,15 @@ return [
     ],
 
     // 主服务器配置
-    'mainServer'    => \defined('SWOOLE_VERSION') ? [
-        'namespace'    => 'Imi\WorkermanGateway\Test\AppServer\WebSocketServer',
-        'type'         => \Imi\WorkermanGateway\Swoole\Server\Type::BUSINESS_WEBSOCKET,
+    'mainServer'        => \defined('SWOOLE_VERSION') ? [
+        'namespace'        => 'Imi\WorkermanGateway\Test\AppServer\WebSocketServer',
+        'type'             => \Imi\WorkermanGateway\Swoole\Server\Type::BUSINESS_WEBSOCKET,
         // 'host'         => env('SERVER_HOST', '127.0.0.1'),
         // 'port'         => 13002,
-        'mode'         => \SWOOLE_BASE,
-        'configs'      => [
+        'mode'             => \SWOOLE_BASE,
+        'configs'          => [
             'worker_num'    => 2,
+            'max_wait_time' => 30,
         ],
         'workermanGateway' => [
             'registerAddress'      => '127.0.0.1:13004',
@@ -90,8 +94,8 @@ return [
     ] : [],
 
     // Workerman 服务器配置
-    'workermanServer' => [
-        'http' => [
+    'workermanServer'   => [
+        'http'      => [
             'namespace' => 'Imi\WorkermanGateway\Test\AppServer\ApiServer',
             'type'      => Imi\Workerman\Server\Type::HTTP,
             'host'      => env('SERVER_HOST', '127.0.0.1'),
@@ -100,7 +104,7 @@ return [
                 'registerAddress' => '127.0.0.1:13004',
             ],
         ],
-        'register' => [
+        'register'  => [
             'namespace'   => 'Imi\WorkermanGateway\Test\AppServer\Register',
             'type'        => Imi\WorkermanGateway\Workerman\Server\Type::REGISTER,
             'host'        => env('SERVER_HOST', '127.0.0.1'),
@@ -108,11 +112,12 @@ return [
             'configs'     => [
             ],
         ],
-        'gateway' => [
-            'namespace'   => 'Imi\WorkermanGateway\Test\AppServer\Gateway',
-            'type'        => Imi\WorkermanGateway\Workerman\Server\Type::GATEWAY,
-            'socketName'  => 'websocket://127.0.0.1:13002',
-            'configs'     => [
+        'gateway'   => [
+            'namespace'           => 'Imi\WorkermanGateway\Test\AppServer\Gateway',
+            'type'                => Imi\WorkermanGateway\Workerman\Server\Type::GATEWAY,
+            'socketName'          => 'websocket://127.0.0.1:13002',
+            'nonControlFrameType' => NonControlFrameType::BINARY,
+            'configs'             => [
                 'lanIp'           => '127.0.0.1',
                 'startPort'       => 12900,
                 'registerAddress' => '127.0.0.1:13004',
@@ -130,13 +135,13 @@ return [
     ],
 
     // 数据库配置
-    'db'    => [
+    'db'                => [
         // 默认连接池名
         'defaultPool'    => 'maindb',
     ],
 
     // redis 配置
-    'redis' => [
+    'redis'             => [
         // 默认连接池名
         'defaultPool'   => 'redis',
         'connections'   => [
@@ -149,7 +154,7 @@ return [
     ],
 
     // 锁
-    'lock'  => [
+    'lock'              => [
         'default' => 'redisConnectionContextLock',
         'list'    => [
             'redisConnectionContextLock' => [
@@ -161,15 +166,18 @@ return [
         ],
     ],
 
-    'workerman' => [
+    'workerman'         => [
         'imi' => [
             'beans' => [
                 'ServerUtil' => Imi\WorkermanGateway\Workerman\Server\Util\GatewayServerUtil::class,
             ],
         ],
+        'worker' => [
+            'stopTimeout' => 30,
+        ],
     ],
 
-    'swoole' => [
+    'swoole'            => [
         'imi' => [
             'beans' => [
                 'ServerUtil' => Imi\WorkermanGateway\Swoole\Server\Util\GatewayServerUtil::class,

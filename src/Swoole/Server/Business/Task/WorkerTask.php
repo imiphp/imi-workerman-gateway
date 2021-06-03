@@ -6,8 +6,8 @@ namespace Imi\WorkermanGateway\Swoole\Server\Business\Task;
 
 use GatewayWorker\Lib\Gateway;
 use GatewayWorker\Protocols\GatewayProtocol;
-use Imi\App;
 use Imi\ConnectionContext;
+use Imi\Log\Log;
 use Imi\RequestContext;
 use Imi\Swoole\Http\Message\SwooleResponse;
 use Imi\Swoole\Server\Contract\ISwooleServer;
@@ -20,25 +20,31 @@ use Swoole\WebSocket\Frame;
 use Workerman\Gateway\Gateway\Contract\IGatewayClient;
 use Yurun\Swoole\CoPool\Interfaces\ICoTask;
 use Yurun\Swoole\CoPool\Interfaces\ITaskParam;
+
 use function Yurun\Swoole\Coroutine\goWait;
 
 if (\Imi\Util\Imi::checkAppType('swoole'))
 {
-    class WorkerTask implements ICoTask
+    abstract class WorkerTask implements ICoTask
     {
+        protected string $errorHandler = '';
+
         /**
          * {@inheritDoc}
          */
         public function run(ITaskParam $param)
         {
-            goWait(static function () use ($param) {
+            $errorHandler = $this->errorHandler;
+            goWait(static function () use ($param, $errorHandler) {
                 $closeConnectionOnFail = false;
+                $cmd = null;
                 try
                 {
                     /** @var ISwooleServer $server */
                     /** @var IGatewayClient $client */
                     ['server' => $server, 'client' => $client, 'message' => $message, 'clientId' => $clientId] = $param->getData();
-                    switch ($message['cmd']) {
+                    switch ($cmd = $message['cmd'])
+                    {
                         case GatewayProtocol::CMD_ON_CONNECT:
                             // 连接
                             RequestContext::create([
@@ -101,7 +107,10 @@ if (\Imi\Util\Imi::checkAppType('swoole'))
                 catch (\Throwable $th)
                 {
                     // @phpstan-ignore-next-line
-                    App::getBean('ErrorLog')->onException($th);
+                    if (GatewayProtocol::CMD_ON_MESSAGE === $cmd && isset($server) && true !== $server->getBean($errorHandler)->handle($th))
+                    {
+                        Log::error($th);
+                    }
                     if ($closeConnectionOnFail && isset($clientId))
                     {
                         Gateway::closeClient($clientId);
